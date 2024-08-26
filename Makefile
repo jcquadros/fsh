@@ -2,31 +2,22 @@ CC = gcc
 CFLAGS = -Wall -g # adicione aqui flags de compilação
 SRCDIR = src
 OBJDIR = obj
-BINDIR = bin
 
-# Adicione aqui os arquivos .c dentro da pasta src
-OBJS = $(OBJDIR)/main.o
+# Encontra todos os arquivos .c no diretório src e cria a lista correspondente de arquivos .o
+SRCS = $(wildcard $(SRCDIR)/*.c)
+OBJS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
 
-all: $(BINDIR)/fsh
-
-# Cria o executável
-$(BINDIR)/fsh: $(OBJS) | $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/fsh $(OBJS)
-
-# Cria o diretório bin
-$(BINDIR):
-	mkdir -p $(BINDIR)
+# Compila o programa
+all: $(OBJS)
+	$(CC) $(CFLAGS) -o fsh $(OBJS) 
 
 # Cria o diretório obj
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-# Compila
+# Compila os arquivos .c para .o
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-run: 
-	./$(BINDIR)/fsh
-
 clean:
-	rm -rf $(BINDIR) $(OBJDIR)
+	rm -rf $(OBJDIR) fsh

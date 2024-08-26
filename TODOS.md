@@ -11,7 +11,7 @@
     Se a shell tem descendentes vivos (não contando processos secundários), deve perguntar se o usuário deseja finalizar a shell.
     Todos os sinais devem ser bloqueados durante o tratamento de SIGINT.
     Se não há descendentes vivos, a shell pode ser encerrada imediatamente.
-- __(COM ERRO)__ SIGTSTP (Ctrl-Z):
+- __(DONE)__ SIGTSTP (Ctrl-Z):
     Suspender todos os descendentes da shell, incluindo processos de foreground e background.
     Não suspender a shell em si.
 ### Operações Internas da Shell:
