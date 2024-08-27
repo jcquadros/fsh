@@ -150,7 +150,8 @@ void execute_process(char *args, int is_foreground){
     char *argv[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
     int n_args = 0;
     process_input(args, argv, &n_args, " ", MAX_ARGS);
-    argv[MAX_ARGS] = NULL; // Adicionando NULL no final da lista de argumentos
+    argv[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
+    n_args++;
 
     // Se o comando for waitall ou die, não cria um novo processo e executa a função
     if (strcmp(argv[0], "waitall") == 0) {
@@ -187,7 +188,6 @@ void execute_process(char *args, int is_foreground){
         exit(EXIT_FAILURE);
     }
 }
-
 
 void sigint_handler(int sig) {
     if (forward_list_size(process_list) > 0) { // Vê se tem algum filho de shell vivo - Mudar para uma funcao que verifica caso a caso se tem algum filho cujo o status é diferente de DONE
