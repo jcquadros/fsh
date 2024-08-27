@@ -99,6 +99,16 @@ void forward_list_print(ForwardList *l, void (*print_fn)(data_type));
 data_type forward_list_get(ForwardList *l, int i);
 
 /**
+ * @brief Returns the data stored in the last node.
+ * @param l
+ * Pointer to the linked list.
+ * @return data_type
+ * Data stored in the node at the given index.
+ *
+ */
+data_type forward_list_get_back(ForwardList *l);
+
+/**
  * @brief Remove the first node of the linked list and returns its data.
  * @param l
  * Pointer to the linked list.

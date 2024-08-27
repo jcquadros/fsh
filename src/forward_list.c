@@ -99,6 +99,11 @@ data_type forward_list_get(ForwardList *l, int i)
     return n->value;
 }
 
+data_type forward_list_get_back(ForwardList *l)
+{
+    return l->last->value;
+}
+
 data_type forward_list_pop_front(ForwardList *l)
 {
     if (l->head == NULL)
