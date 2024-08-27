@@ -60,6 +60,8 @@ void launch_process(char *input);
 /* Coloca um processo em primeiro plano */
 void put_process_in_foreground(Process *p);
 
+void exit_process_in_foreground(Process *p);
+
 /* Coloca um processo em segundo plano */
 void put_process_in_background(Process *p);
 
@@ -143,7 +145,10 @@ void launch_process(char *input){
         int is_foreground = (i == 0) ? 1 : 0;
         printf("Processo %d: %s\n", i, process[i]);
         execute_process(process[i], is_foreground);
-    } 
+    }
+
+    ProcessGroup *process_group_atual = forward_list_get_back(process_group_list);
+    exit_process_in_foreground(process_group_atual->foreground);
 }
 
 void execute_process(char *args, int is_foreground){
@@ -281,6 +286,9 @@ void add_process_to_list(Process* process) {
 void put_process_in_foreground(Process* p) {
     // Configura o processo como foreground e espera por sua conclusão
     tcsetpgrp(shell_terminal, p->pid);
+}
+
+void exit_process_in_foreground(Process *p) {
     waitpid(p->pid, NULL, 0);
     tcsetpgrp(shell_terminal, shell_pgid); // Recupera o controle do terminal para o shell
 }
