@@ -20,7 +20,7 @@ Por enquanto temos variaveis globais e varias funcoes, futuramente vamos organiz
 */
 
 pid_t shell_pgid;
-int shell_terminal;
+int shell_terminal = STDIN_FILENO;
 int shell_running = 1;
 
 ForwardList* process_list = NULL; // Lista de processos do shell (nao inclui processos secundarios de cada processo em background - os tais 'Pxs')
@@ -90,10 +90,6 @@ int main(){
 
         launch_process(input);
     }
-
-    // Provavelmente tem vazamento de memoria aqui
-    forward_list_destroy(process_list);
-    forward_list_destroy(session_list);
     return EXIT_SUCCESS;
 }
 
@@ -174,20 +170,38 @@ void execute_process(char *args, int is_foreground, pid_t *pgid, Session *sessio
 }
 
 void sigint_handler(int sig) {
+    printf("\nRecebido SIGINT (Ctrl+C). ");
+    fflush(stdout);
+    sigset_t all_signals;
+    sigset_t old_mask;
+    sigfillset(&all_signals); // Preenche o conjunto de sinais com todos os sinais
+
+    // Bloqueia todos os sinais enquanto o manipulador é executado
+    if (sigprocmask(SIG_BLOCK, &all_signals, &old_mask) < 0) {
+        perror("sigprocmask");
+        exit(EXIT_FAILURE);
+    }
+
     if (has_alive_process()) { 
         printf("\nProcessos em execução. Deseja finalizar a shell? (s/n) ");
         char response = getchar();
         if (response == 's' || response == 'S') {
-            shell_running = 0;
-            die();
+           die();  
         }
 
         // Limpa o buffer de entrada
         while (getchar() != '\n');
 
     } else {
-        shell_running = 0;
+        die();
     }
+
+    // Restaura a máscara de sinais
+    if (sigprocmask(SIG_SETMASK, &old_mask, NULL) < 0) {
+        perror("sigprocmask");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 /* Tratador do SIGTSTP - suspende todos os filhos do shell - não conta os netos*/
@@ -203,27 +217,29 @@ void sigtstp_handler(int sig) {
     }
 }
 
+
+void signal_handler(int sig) {
+    switch (sig) {
+        case SIGINT:
+            sigint_handler(sig);
+            break;
+        case SIGTSTP:
+            sigtstp_handler(sig);
+            break;
+        default:
+            break;
+    }
+}
+
 // Configura os tratadores de sinal
 void setup_signal_handlers() {
-    struct sigaction sa_int, sa_tstp;
+    struct sigaction sa;
 
-    // Configura o tratador para SIGINT
-    sa_int.sa_handler = sigint_handler;
-    sigfillset(&sa_int.sa_mask);
-    sa_int.sa_flags = 0;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
 
-    if (sigaction(SIGINT, &sa_int, NULL) == -1) {
-        perror("Failed to install SIGINT signal handler");
-        exit(EXIT_FAILURE);
-    }
-
-    // Configura o tratador para SIGTSTP 
-    sa_tstp.sa_handler = sigtstp_handler;
-    sigemptyset(&sa_tstp.sa_mask);
-    sa_tstp.sa_flags = SA_RESTART;
-
-    if (sigaction(SIGTSTP, &sa_tstp, NULL) == -1) {
-        perror("Failed to install SIGTSTP signal handler");
+    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1) {
         exit(EXIT_FAILURE);
     }
 }
@@ -238,8 +254,19 @@ void waitall(){
 
 // TODO: Fazer aquela verificação de erros que a roberta falou. Essa versão é só pra testar o conceito
 void die(){
-    kill(0, SIGTERM);
-    while(wait(NULL) > 0);
+    Node * current = session_list->head;
+    while(current != NULL){
+        Session * s = (Session*)current->value;
+        kill(s->foreground->pid, SIGKILL);
+        for(int i = 0; i < s->num_background; i++){
+            kill(s->background[i]->pid, SIGKILL);
+        }
+        destroy_session(s);
+        current = current->next;
+    }
+    forward_list_destroy(session_list);
+    forward_list_destroy(process_list);
+    exit(EXIT_SUCCESS);
 }
 
 void process_input(char *input, char *args[], int *n_args, char* delimiter, int max_args){
