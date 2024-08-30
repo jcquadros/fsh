@@ -3,9 +3,8 @@
 #include <string.h>
 #include <sys/types.h>
 
-ProcessGroup* create_process_group(pid_t pgid) {
-    ProcessGroup* new_group = (ProcessGroup*)malloc(sizeof(ProcessGroup));
-    new_group->pgid = pgid;
+Session* create_session() {
+    Session* new_group = (Session*)malloc(sizeof(Session));
     new_group->foreground = NULL;
     new_group->background = NULL;
     new_group->num_background = 0;
@@ -13,40 +12,38 @@ ProcessGroup* create_process_group(pid_t pgid) {
 }
 
 
-Process* create_process(pid_t pid, int is_foreground, int is_background, char* command, ProcessGroup* parent_group) {
+Process* create_process(pid_t pid, pid_t pgid, int is_foreground) {
     Process* new_process = (Process*)malloc(sizeof(Process));
     new_process->pid = pid;
+    new_process->pgid = pgid;
     new_process->status = RUNNING;
     new_process->is_foreground = is_foreground;
-    new_process->is_background = is_background;
-    new_process->command = strdup(command);
-    new_process->parent_group = parent_group;
+
     return new_process;
 }
 
-void insert_process_in_group(Process* p, ProcessGroup* pg){
+void insert_process_in_session(Process* p, Session* s){
     if(p->is_foreground){
-        pg->foreground = p;
+        s->foreground = p;
     }else{
-        pg->background = (Process**)realloc(pg->background, sizeof(Process*) * (pg->num_background + 1));
-        pg->background[pg->num_background] = p;
-        pg->num_background++;
+        s->background = (Process**)realloc(s->background, sizeof(Process*) * (s->num_background + 1));
+        s->background[s->num_background] = p;
+        s->num_background++;
     }
 }
 
-void destroy_process_group(ProcessGroup* pg){
-    if(pg->foreground != NULL){
-        destroy_process(pg->foreground);
+void destroy_session(Session* s){
+    if(s->foreground != NULL){
+        destroy_process(s->foreground);
     }
 
-    for(int i = 0; i < pg->num_background; i++){
-        destroy_process(pg->background[i]);
+    for(int i = 0; i < s->num_background; i++){
+        destroy_process(s->background[i]);
     }
     
-    free(pg);
+    free(s);
 }
 
 void destroy_process(Process* p){
-    // free(p->command);
     free(p);
 }

@@ -14,31 +14,28 @@ typedef enum {
 
 typedef struct Process {
     pid_t pid;              // ID do processo
+    pid_t pgid;             // ID do grupo de processos
     status status;         // Status do processo
     int is_foreground;     // Flag para indicar se é um processo em foreground
-    int is_background;     // Flag para indicar se é um processo em background
-    char *command;         // Comando a ser executado
-    struct ProcessGroup* parent_group; // Referência ao grupo de processos pai
 } Process;
 
-typedef struct ProcessGroup {
-    pid_t pgid;             // ID do grupo de processos
+typedef struct Session {
     Process* foreground;   // Processo em foreground
     Process** background;  // Array de processos em background
     int num_background;    // Número de processos em background
-} ProcessGroup;
+} Session;
 
-/* Cria um novo grupo de processos */
-ProcessGroup* create_process_group(pid_t pgid);
+/* Cria uma nova sessao */
+Session* create_session();
 
 /* Cria um novo processo */
-Process* create_process(pid_t pid, int is_foreground, int is_background, char* command, ProcessGroup* parent_group);
+Process* create_process(pid_t pid, pid_t pgid, int is_foreground);
 
 /* Adiciona um processo a um grupo de processos */
-void insert_process_in_group(Process* p, ProcessGroup* pg);
+void insert_process_in_session(Process* p, Session* s);
 
 /* Destroi um grupo de processos */
-void destroy_process_group(ProcessGroup* pg);
+void destroy_session(Session* s);
 
 /* Destroi um processo */
 void destroy_process(Process* p);

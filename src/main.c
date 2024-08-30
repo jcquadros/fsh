@@ -22,10 +22,9 @@ Por enquanto temos variaveis globais e varias funcoes, futuramente vamos organiz
 pid_t shell_pgid;
 int shell_terminal;
 int shell_running = 1;
-struct termios shell_tmodes;
 
 ForwardList* process_list = NULL; // Lista de processos do shell (nao inclui processos secundarios de cada processo em background - os tais 'Pxs')
-ForwardList* process_group_list = NULL; // Lista de grupos de processos - Basicamente um grupo de processos é uma linha de comando shell
+ForwardList* session_list = NULL; // Lista de grupos de processos - Basicamente um grupo de processos é uma linha de comando shell
 
 /* Tratador do sinal SIGINT */
 void sigint_handler(int sig);
@@ -52,30 +51,32 @@ void clean_buffer();
 void init_shell();
 
 /* Cria um novo processo */
-void execute_process(char *args, int is_foreground);
+void execute_process(char *args, int is_foreground, pid_t *pgid, Session *session);
 
 /* Separa os comandos da entrada do usuário */
 void launch_process(char *input);
 
 /* Coloca um processo em primeiro plano */
-void put_process_in_foreground(Process *p);
+void put_process_in_foreground(pid_t pid);
 
-void exit_process_in_foreground(Process *p);
+void wait_process_in_foreground(Process *p);
 
 /* Coloca um processo em segundo plano */
-void put_process_in_background(Process *p);
+void put_process_in_background(pid_t pid);
 
 /* Adiciona um grupo de processos à lista */
-void add_process_group_to_group_list(ProcessGroup* group);
+void session_list_push(Session* session);
 
 /*Adiciona um processo a uma lista de processos*/
-void add_process_to_list(Process* process);
+void process_list_push(Process* process);
+
+int has_alive_process();
 
 
 int main(){
     char input[MAX_INPUT_SIZE]; // Buffer para a entrada do usuário
     process_list = forward_list_create();
-    process_group_list = forward_list_create();
+    session_list = forward_list_create();
 
     init_shell();
 
@@ -92,7 +93,7 @@ int main(){
 
     // Provavelmente tem vazamento de memoria aqui
     forward_list_destroy(process_list);
-    forward_list_destroy(process_group_list);
+    forward_list_destroy(session_list);
     return EXIT_SUCCESS;
 }
 
@@ -100,58 +101,28 @@ int main(){
 void init_shell() {
     // Trata alguns sinais
     setup_signal_handlers();
-
-    // Pega o terminal do shell
-    shell_terminal = STDIN_FILENO;
-
-    
-
-    // TODO: setsid nao funciona. Verificar o que está errado
-    // Cria uma nova sessão e define o shell como líder da sessão
-    if (setsid() == -1) {
-        perror("setsid");
-        //return;
-    }
-
-    // Obtém o ID do processo do shell
     shell_pgid = getpid();
-
-    // Define o grupo de processos do shell
-    if (setpgid(shell_pgid, shell_pgid) == -1) {
-        perror("setpgid");
-        return;
-    }
-
-    // Define o grupo de processos do terminal
-    if (tcsetpgrp(shell_terminal, shell_pgid) == -1) {
-        perror("tcsetpgrp");
-        return;
-    }
-
-    // Obtém os atributos do terminal
-    if (tcgetattr(shell_terminal, &shell_tmodes) == -1) {
-        perror("tcgetattr");
-        return;
-    }
 }
 
 // Le a entrada de usuario e separa os comandos
 void launch_process(char *input){
     char *process[MAX_PROCESS];
     int n_process = 0;
+    pid_t pgid = 0;
     process_input(input, process, &n_process, "#", MAX_PROCESS);
+
+    Session * new_session = create_session();
 
     for(int i = 0; i < n_process; i++){
         int is_foreground = (i == 0) ? 1 : 0;
-        printf("Processo %d: %s\n", i, process[i]);
-        execute_process(process[i], is_foreground);
+        execute_process(process[i], is_foreground, &pgid, new_session);
     }
 
-    ProcessGroup *process_group_atual = forward_list_get_back(process_group_list);
-    exit_process_in_foreground(process_group_atual->foreground);
+    session_list_push(new_session);
+    wait_process_in_foreground(new_session->foreground);
 }
 
-void execute_process(char *args, int is_foreground){
+void execute_process(char *args, int is_foreground, pid_t *pgid, Session *session){
     char *argv[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
     int n_args = 0;
     process_input(args, argv, &n_args, " ", MAX_ARGS);
@@ -167,27 +138,35 @@ void execute_process(char *args, int is_foreground){
         return;
     }
 
-    pid_t pgid = getpid(); // Usar o PID do shell como o PGID inicial
-    ProcessGroup* group = create_process_group(pgid);
-    add_process_group_to_group_list(group);
-
     pid_t pid = fork();
-    if(pid == 0){
+    if(pid == 0){ // Processo filho
         signal(SIGINT, SIG_IGN); // Filhos ignoram o sinal SIGINT
-        // TODO: Implementar execução de comandos
+
+        if(is_foreground )
+            put_process_in_foreground(getpid());
+        else
+            put_process_in_background(getpid()); // Nao faz nada
+
+        setpgid(0, *pgid);
+
         if(execvp(argv[0], argv) == -1)
             perror("execvp");
+
         exit(EXIT_FAILURE);
-    }else if(pid > 0){
-
-        Process* process = create_process(pid, is_foreground, 0, args, group);
-        insert_process_in_group(process, group);
-
-        if(is_foreground){
-            put_process_in_foreground(process);
+    }else if(pid > 0){ // Processo pai
+        pid_t this_pgid = 0; // Nao faco getpgid aqui porque pode acontecer uma condição de corrida
+        if (*pgid == 0) {
+            if (!is_foreground) // Se for um processo em background, o pgid é o pid do primeiro processo em background
+                *pgid = pid;
+            this_pgid = pid;
         }else{
-            put_process_in_background(process);
+            this_pgid = *pgid;
         }
+
+        Process *new_process = create_process(pid, this_pgid, is_foreground);
+        process_list_push(new_process);
+        insert_process_in_session(new_process, session);
+
     }else{
         perror("fork");
         exit(EXIT_FAILURE);
@@ -195,11 +174,12 @@ void execute_process(char *args, int is_foreground){
 }
 
 void sigint_handler(int sig) {
-    if (forward_list_size(process_list) > 0) { // Vê se tem algum filho de shell vivo - Mudar para uma funcao que verifica caso a caso se tem algum filho cujo o status é diferente de DONE
+    if (has_alive_process()) { 
         printf("\nProcessos em execução. Deseja finalizar a shell? (s/n) ");
         char response = getchar();
         if (response == 's' || response == 'S') {
             shell_running = 0;
+            die();
         }
 
         // Limpa o buffer de entrada
@@ -218,6 +198,7 @@ void sigtstp_handler(int sig) {
     while(current != NULL){
         Process * p = (Process*)current->value;
         kill(p->pid, SIGSTOP);
+        p->status = STOPPED;
         current = current->next;
     }
 }
@@ -275,24 +256,43 @@ void clean_buffer(){
     while(getchar() != '\n');
 }
 
-void add_process_group_to_group_list(ProcessGroup* group) {
-    forward_list_push_front(process_group_list, group);
+void session_list_push(Session* session) {
+    forward_list_push_front(session_list, session);
 }
 
-void add_process_to_list(Process* process) {
+void process_list_push(Process* process) {
     forward_list_push_front(process_list, process);
 }
 
-void put_process_in_foreground(Process* p) {
+void put_process_in_foreground(pid_t pid) {
     // Configura o processo como foreground e espera por sua conclusão
-    tcsetpgrp(shell_terminal, p->pid);
+    if(tcsetpgrp(shell_terminal, pid) == -1) {
+        perror("tcsetpgrp");
+        exit(EXIT_FAILURE);
+    }
 }
 
-void exit_process_in_foreground(Process *p) {
+void wait_process_in_foreground(Process *p) {
     waitpid(p->pid, NULL, 0);
-    tcsetpgrp(shell_terminal, shell_pgid); // Recupera o controle do terminal para o shell
+    // Recupera o controle do terminal para o shell
+    if(tcsetpgrp(shell_terminal, shell_pgid) == -1){
+        perror("tcsetpgrp");
+        exit(EXIT_FAILURE);
+    } 
 }
 
-void put_process_in_background(Process* p){
+void put_process_in_background(pid_t pid_p){
+
+}
+
+int has_alive_process(){
+    Node * current = process_list->head;
+    while(current != NULL){
+        Process * p = (Process*)current->value;
+        if(p->status != DONE)
+            return 1;
+        current = current->next;
+    }
+    return 0;
 
 }
