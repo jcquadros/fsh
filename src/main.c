@@ -266,9 +266,6 @@ void signal_handler(int sig) {
         case SIGCHLD:
             sigchld_handler(sig);
             break;
-        case SIGKILL:
-            die(); // Nao sei se deveria ser assim
-            break;
         default:
             break;
     }
@@ -282,7 +279,7 @@ void setup_signal_handlers() {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
 
-    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1 || sigaction(SIGCHLD, &sa, NULL) == -1) {
+    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1 || sigaction(SIGCHLD, &sa, NULL) == -1 ) {
         exit(EXIT_FAILURE);
     }
 }
