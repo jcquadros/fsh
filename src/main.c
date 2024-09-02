@@ -26,6 +26,10 @@ int shell_running = 1;
 ForwardList* process_list = NULL; // Lista de processos do shell (nao inclui processos secundarios de cada processo em background - os tais 'Pxs')
 ForwardList* session_list = NULL; // Lista de grupos de processos - Basicamente um grupo de processos é uma linha de comando shell
 
+void session_notify(Session * s, pid_t sig);
+void session_mark_as_done(Session * s);
+void session_mark_as_stopped(Session * s);
+Session * session_find(pid_t pid);
 /* Tratador do sinal SIGINT */
 void sigint_handler(int sig);
 
@@ -143,7 +147,7 @@ void execute_process(char *args, int is_foreground, pid_t *pgid, Session *sessio
         else
             put_process_in_background(getpid()); // Nao faz nada
 
-        setpgid(0, *pgid);
+        setpgid(0, *pgid);    
 
         if(execvp(argv[0], argv) == -1)
             perror("execvp");
@@ -217,6 +221,38 @@ void sigtstp_handler(int sig) {
     }
 }
 
+void sigchld_handler(int sig) {
+    int status;
+    pid_t pid;
+
+    // Loop para capturar todos os processos filhos que mudaram de estado
+    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED)) > 0) {
+        if (WIFEXITED(status)) {
+            printf("Processo %d terminou normalmente com status %d.\n", pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
+            Session * s = session_find(pid);
+            session_notify(s, WTERMSIG(status));
+            session_mark_as_done(s);
+
+        } else if (WIFSTOPPED(status)) {
+            printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
+            Session * s = session_find(pid);
+            session_notify(s, WSTOPSIG(status));
+            session_mark_as_stopped(s);
+
+
+        } else if (WIFCONTINUED(status)) {
+            printf("Processo %d foi continuado.\n", pid);
+        }
+    }
+
+    // Verifica se houve um erro no waitpid
+    if (pid == -1 && errno != ECHILD) {
+        perror("waitpid");
+    }
+}
+
 
 void signal_handler(int sig) {
     switch (sig) {
@@ -225,6 +261,13 @@ void signal_handler(int sig) {
             break;
         case SIGTSTP:
             sigtstp_handler(sig);
+            break;
+
+        case SIGCHLD:
+            sigchld_handler(sig);
+            break;
+        case SIGKILL:
+            die(); // Nao sei se deveria ser assim
             break;
         default:
             break;
@@ -239,7 +282,7 @@ void setup_signal_handlers() {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
 
-    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1) {
+    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1 || sigaction(SIGCHLD, &sa, NULL) == -1) {
         exit(EXIT_FAILURE);
     }
 }
@@ -258,8 +301,12 @@ void die(){
     while(current != NULL){
         Session * s = (Session*)current->value;
         kill(s->foreground->pid, SIGKILL);
-        for(int i = 0; i < s->num_background; i++){
-            kill(s->background[i]->pid, SIGKILL);
+        // for(int i = 0; i < s->num_background; i++){ // Dessa forma funciona, mas não é a melhor forma de fazer
+        //     kill(s->background[i]->pid, SIGKILL);
+        // }
+        // Essa seria a melhor forma de se fazer, enviando um sinal para o grupo de processos ao colocar o sinal de menos na frente do pgid o kill envia o sinal para todos os processos do grupo
+        if (s->num_background > 0) {
+            kill(-s->background[0]->pgid, SIGKILL);
         }
         destroy_session(s);
         current = current->next;
@@ -322,4 +369,39 @@ int has_alive_process(){
     }
     return 0;
 
+}
+
+
+Session * session_find(pid_t pid){
+    Node * current = session_list->head;
+    while(current != NULL){
+        Session * s = (Session*)current->value;
+        if(s->foreground->pid == pid)
+            return s;
+        for(int i = 0; i < s->num_background; i++){
+            if(s->background[i]->pid == pid)
+                return s;
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+
+void session_notify(Session * s, pid_t sig){
+    kill(s->foreground->pid, sig);
+    if (s->num_background > 0)
+        kill(s->background[0]->pgid, sig);
+}
+
+void session_mark_as_done(Session * s){
+    s->foreground->status = DONE;
+    if (s->num_background > 0)
+        s->background[0]->status = DONE;
+}
+
+void session_mark_as_stopped(Session * s){
+    s->foreground->status = STOPPED;
+    if (s->num_background > 0)
+        s->background[0]->status = STOPPED;
 }

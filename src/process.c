@@ -19,6 +19,8 @@ Process* create_process(pid_t pid, pid_t pgid, int is_foreground) {
     new_process->status = RUNNING;
     new_process->is_foreground = is_foreground;
 
+    printf("Processo criado com pid %d e pgid %d e foreground=%d\n", new_process->pid, new_process->pgid, new_process->is_foreground);
+
     return new_process;
 }
 
