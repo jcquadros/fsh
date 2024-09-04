@@ -31,6 +31,9 @@ Session* create_session();
 /* Cria um novo processo */
 Process* create_process(pid_t pid, pid_t pgid, int is_foreground);
 
+void process_wait(Process* p);
+
+
 /* Adiciona um processo a um grupo de processos */
 void insert_process_in_session(Process* p, Session* s);
 
@@ -39,6 +42,12 @@ void destroy_session(Session* s);
 
 /* Destroi um processo */
 void destroy_process(Process* p);
+
+void session_notify(Session * s, pid_t sig);
+
+void session_mark_as_done(Session * s);
+
+void session_mark_as_stopped(Session * s);
 
 #endif // PROCESS_H
 

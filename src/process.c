@@ -49,3 +49,26 @@ void destroy_session(Session* s){
 void destroy_process(Process* p){
     free(p);
 }
+
+void process_wait(Process *p) {
+    int status;
+    waitpid(p->pid, &status, 0);
+}
+
+void session_notify(Session * s, pid_t sig){
+    kill(s->foreground->pid, sig);
+    if (s->num_background > 0)
+        kill(s->background[0]->pgid, sig);
+}
+
+void session_mark_as_done(Session * s){
+    s->foreground->status = DONE;
+    if (s->num_background > 0)
+        s->background[0]->status = DONE;
+}
+
+void session_mark_as_stopped(Session * s){
+    s->foreground->status = STOPPED;
+    if (s->num_background > 0)
+        s->background[0]->status = STOPPED;
+}

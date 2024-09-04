@@ -10,26 +10,13 @@
 #include <termios.h>
 #include "forward_list.h"
 #include "process.h"
+#include "fsh.h"
 
 #define MAX_ARGS 2
 #define MAX_INPUT_SIZE 2000
 #define MAX_PROCESS 5
 
-/*
-Por enquanto temos variaveis globais e varias funcoes, futuramente vamos organizar em varios arquivos
-*/
-
-pid_t shell_pgid;
-int shell_terminal = STDIN_FILENO;
-int shell_running = 1;
-
-ForwardList* process_list = NULL; // Lista de processos do shell (nao inclui processos secundarios de cada processo em background - os tais 'Pxs')
-ForwardList* session_list = NULL; // Lista de grupos de processos - Basicamente um grupo de processos é uma linha de comando shell
-
-void session_notify(Session * s, pid_t sig);
-void session_mark_as_done(Session * s);
-void session_mark_as_stopped(Session * s);
-Session * session_find(pid_t pid);
+FSH *fsh;
 /* Tratador do sinal SIGINT */
 void sigint_handler(int sig);
 
@@ -39,52 +26,22 @@ void sigtstp_handler(int sig);
 /* Configura os tratadores de sinal */
 void setup_signal_handlers();
 
-/* Espera por todos os filhos Zumbis */
-void waitall();
-
-/* Mata todos os filhos */
-void die();
-
 /* Separa a entrada do usuário em argumentos de acordo com o delimitador selecionado */
 void process_input(char *input, char *args[], int *n_args, char* delimiter, int max_args);
 
-/* Limpa o buffer de entrada */
-void clean_buffer();
+/* Cria um processo */
+Process *launch_process(char *input, int is_foreground, pid_t pgid);
 
-/*Inicializa a shel, cria mascara de sinais e etc */
-void init_shell();
-
-/* Cria um novo processo */
-void execute_process(char *args, int is_foreground, pid_t *pgid, Session *session);
-
-/* Separa os comandos da entrada do usuário */
-void launch_process(char *input);
-
-/* Coloca um processo em primeiro plano */
-void put_process_in_foreground(pid_t pid);
-
-void wait_process_in_foreground(Process *p);
-
-/* Coloca um processo em segundo plano */
-void put_process_in_background(pid_t pid);
-
-/* Adiciona um grupo de processos à lista */
-void session_list_push(Session* session);
-
-/*Adiciona um processo a uma lista de processos*/
-void process_list_push(Process* process);
-
-int has_alive_process();
-
+/* Cria uma sessão */
+Session *launch_session(char *input);
 
 int main(){
     char input[MAX_INPUT_SIZE]; // Buffer para a entrada do usuário
-    process_list = forward_list_create();
-    session_list = forward_list_create();
-
-    init_shell();
-
-    while(shell_running){
+    setup_signal_handlers();
+    
+    fsh = fsh_create();
+    while(1){
+        fsh_acquire_terminal();
         printf("fsh> ");
         fflush(stdout);
 
@@ -92,86 +49,65 @@ int main(){
         fgets(input, MAX_INPUT_SIZE, stdin);
         input[strcspn(input, "\n")] = 0; // Remove o \n do final da string
 
-        launch_process(input);
+        Session *s = launch_session(input);
+        process_wait(s->foreground);
+
     }
     return EXIT_SUCCESS;
 }
 
-
-void init_shell() {
-    // Trata alguns sinais
-    setup_signal_handlers();
-    shell_pgid = getpid();
-}
-
-// Le a entrada de usuario e separa os comandos
-void launch_process(char *input){
-    char *process[MAX_PROCESS];
-    int n_process = 0;
+Session *launch_session(char *input){
+    char *commands[MAX_PROCESS];
+    int n_commands = 0;
     pid_t pgid = 0;
-    process_input(input, process, &n_process, "#", MAX_PROCESS);
+    process_input(input, commands, &n_commands, "#", MAX_PROCESS);
 
-    Session * new_session = create_session();
-
-    for(int i = 0; i < n_process; i++){
-        int is_foreground = (i == 0) ? 1 : 0;
-        execute_process(process[i], is_foreground, &pgid, new_session);
+    Session *s = create_session();
+    for(int i = 1; i < n_commands; i++){
+        Process *p = launch_process(commands[i], 0, pgid);
+        pgid = p->pgid;
+        insert_process_in_session(p, s);
+        fsh_push_process(fsh, p);
     }
 
-    session_list_push(new_session);
-    wait_process_in_foreground(new_session->foreground);
+    Process *p = launch_process(commands[0], 1, 0);
+    fsh_put_process_in_foreground(p);
+    insert_process_in_session(p, s);
+    fsh_push_process(fsh, p);
+    fsh_push_session(fsh, s);
+    return s;
 }
 
-void execute_process(char *args, int is_foreground, pid_t *pgid, Session *session){
-    char *argv[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
-    int n_args = 0;
-    process_input(args, argv, &n_args, " ", MAX_ARGS);
-    argv[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
-    n_args++;
 
-    // Se o comando for waitall ou die, não cria um novo processo e executa a função
-    if (strcmp(argv[0], "waitall") == 0) {
-        waitall();
-        return;
-    } else if (strcmp(argv[0], "die") == 0) {
-        die();
-        return;
-    }
+Process *launch_process(char *input, int is_foreground, pid_t pgid){
+    char *args[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
+    int n_args = 0;
+    process_input(input, args, &n_args, " ", MAX_ARGS);
+    args[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
 
     pid_t pid = fork();
-    if(pid == 0){ // Processo filho
-        signal(SIGINT, SIG_IGN); // Filhos ignoram o sinal SIGINT
 
-        if(is_foreground )
-            put_process_in_foreground(getpid());
-        else
-            put_process_in_background(getpid()); // Nao faz nada
-
-        setpgid(0, *pgid);    
-
-        if(execvp(argv[0], argv) == -1)
-            perror("execvp");
-
-        exit(EXIT_FAILURE);
-    }else if(pid > 0){ // Processo pai
-        pid_t this_pgid = 0; // Nao faco getpgid aqui porque pode acontecer uma condição de corrida
-        if (*pgid == 0) {
-            if (!is_foreground) // Se for um processo em background, o pgid é o pid do primeiro processo em background
-                *pgid = pid;
-            this_pgid = pid;
-        }else{
-            this_pgid = *pgid;
-        }
-
-        Process *new_process = create_process(pid, this_pgid, is_foreground);
-        process_list_push(new_process);
-        insert_process_in_session(new_process, session);
-
-    }else{
+    if (pid < 0) {
         perror("fork");
         exit(EXIT_FAILURE);
     }
+
+    if (pid > 0) {
+        // Processo pai
+        if (pgid == 0) {
+            pgid = pid;
+        }
+        setpgid(pid, pgid);
+        Process * p = create_process(pid, pgid, is_foreground);
+        return p;
+    } 
+
+    // Processo filho
+    execvp(args[0], args);
+    perror("execvp");
+    exit(EXIT_FAILURE);
 }
+
 
 void sigint_handler(int sig) {
     printf("\nRecebido SIGINT (Ctrl+C). ");
@@ -186,18 +122,18 @@ void sigint_handler(int sig) {
         exit(EXIT_FAILURE);
     }
 
-    if (has_alive_process()) { 
+    if (fsh_has_alive_process(fsh)) { 
         printf("\nProcessos em execução. Deseja finalizar a shell? (s/n) ");
         char response = getchar();
         if (response == 's' || response == 'S') {
-           die();  
+            fsh_die(fsh);
         }
 
         // Limpa o buffer de entrada
         while (getchar() != '\n');
 
     } else {
-        die();
+        fsh_die(fsh);
     }
 
     // Restaura a máscara de sinais
@@ -211,14 +147,7 @@ void sigint_handler(int sig) {
 /* Tratador do SIGTSTP - suspende todos os filhos do shell - não conta os netos*/
 void sigtstp_handler(int sig) {
     printf("\nRecebido SIGTSTP (Ctrl+Z). O programa não será suspenso. Mas os filhos de shell sim!\n");
-    Node * current = process_list->head;
-
-    while(current != NULL){
-        Process * p = (Process*)current->value;
-        kill(p->pid, SIGSTOP);
-        p->status = STOPPED;
-        current = current->next;
-    }
+    fsh_notify(fsh, SIGTSTP);
 }
 
 void sigchld_handler(int sig) {
@@ -231,13 +160,13 @@ void sigchld_handler(int sig) {
             printf("Processo %d terminou normalmente com status %d.\n", pid, WEXITSTATUS(status));
         } else if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
-            Session * s = session_find(pid);
+            Session * s = session_find(fsh, pid);
             session_notify(s, WTERMSIG(status));
             session_mark_as_done(s);
 
         } else if (WIFSTOPPED(status)) {
             printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
-            Session * s = session_find(pid);
+            Session * s = session_find(fsh, pid);
             session_notify(s, WSTOPSIG(status));
             session_mark_as_stopped(s);
 
@@ -282,35 +211,10 @@ void setup_signal_handlers() {
     if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1 || sigaction(SIGCHLD, &sa, NULL) == -1 ) {
         exit(EXIT_FAILURE);
     }
-}
-
-/* Comandos internos (ainda não testados)*/
-
-// TODO: Fazer aquela verificação de erros que a roberta falou. Essa versão é só pra testar o conceito
-void waitall(){
-    int status;
-    while (waitpid(-1, &status, WNOHANG) > 0);
-}
-
-// TODO: Fazer aquela verificação de erros que a roberta falou. Essa versão é só pra testar o conceito
-void die(){
-    Node * current = session_list->head;
-    while(current != NULL){
-        Session * s = (Session*)current->value;
-        kill(s->foreground->pid, SIGKILL);
-        // for(int i = 0; i < s->num_background; i++){ // Dessa forma funciona, mas não é a melhor forma de fazer
-        //     kill(s->background[i]->pid, SIGKILL);
-        // }
-        // Essa seria a melhor forma de se fazer, enviando um sinal para o grupo de processos ao colocar o sinal de menos na frente do pgid o kill envia o sinal para todos os processos do grupo
-        if (s->num_background > 0) {
-            kill(-s->background[0]->pgid, SIGKILL);
-        }
-        destroy_session(s);
-        current = current->next;
-    }
-    forward_list_destroy(session_list);
-    forward_list_destroy(process_list);
-    exit(EXIT_SUCCESS);
+    // Investigar qual desses sinais permite que a shell nao se bloqueie
+    signal(SIGQUIT, SIG_IGN);
+    signal(SIGTTIN, SIG_IGN);
+    signal(SIGTTOU, SIG_IGN);
 }
 
 void process_input(char *input, char *args[], int *n_args, char* delimiter, int max_args){
@@ -323,82 +227,4 @@ void process_input(char *input, char *args[], int *n_args, char* delimiter, int 
     }
 }
 
-void clean_buffer(){
-    while(getchar() != '\n');
-}
 
-void session_list_push(Session* session) {
-    forward_list_push_front(session_list, session);
-}
-
-void process_list_push(Process* process) {
-    forward_list_push_front(process_list, process);
-}
-
-void put_process_in_foreground(pid_t pid) {
-    // Configura o processo como foreground e espera por sua conclusão
-    if(tcsetpgrp(shell_terminal, pid) == -1) {
-        perror("tcsetpgrp");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void wait_process_in_foreground(Process *p) {
-    waitpid(p->pid, NULL, 0);
-    // Recupera o controle do terminal para o shell
-    if(tcsetpgrp(shell_terminal, shell_pgid) == -1){
-        perror("tcsetpgrp");
-        exit(EXIT_FAILURE);
-    } 
-}
-
-void put_process_in_background(pid_t pid_p){
-
-}
-
-int has_alive_process(){
-    Node * current = process_list->head;
-    while(current != NULL){
-        Process * p = (Process*)current->value;
-        if(p->status != DONE)
-            return 1;
-        current = current->next;
-    }
-    return 0;
-
-}
-
-
-Session * session_find(pid_t pid){
-    Node * current = session_list->head;
-    while(current != NULL){
-        Session * s = (Session*)current->value;
-        if(s->foreground->pid == pid)
-            return s;
-        for(int i = 0; i < s->num_background; i++){
-            if(s->background[i]->pid == pid)
-                return s;
-        }
-        current = current->next;
-    }
-    return NULL;
-}
-
-
-void session_notify(Session * s, pid_t sig){
-    kill(s->foreground->pid, sig);
-    if (s->num_background > 0)
-        kill(s->background[0]->pgid, sig);
-}
-
-void session_mark_as_done(Session * s){
-    s->foreground->status = DONE;
-    if (s->num_background > 0)
-        s->background[0]->status = DONE;
-}
-
-void session_mark_as_stopped(Session * s){
-    s->foreground->status = STOPPED;
-    if (s->num_background > 0)
-        s->background[0]->status = STOPPED;
-}
