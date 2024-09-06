@@ -1,28 +1,17 @@
-#define _POSIX_C_SOURCE 200809L
-
 #include "fsh.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 FSH* fsh_create(){
     FSH* new_fsh = (FSH*)malloc(sizeof(FSH));
-    new_fsh->process_list = forward_list_create();
     new_fsh->session_list = forward_list_create();
     return new_fsh;
 }
 
-void fsh_destroy(FSH* fsh){
-    forward_list_destroy(fsh->process_list);
-    forward_list_destroy(fsh->session_list);
-    free(fsh);
-}
-
-void fsh_push_process(FSH* fsh, Process* process){
-    forward_list_push_front(fsh->process_list, process);
-}
 
 void fsh_push_session(FSH* fsh, Session* session){
     forward_list_push_front(fsh->session_list, session);
@@ -43,46 +32,54 @@ void fsh_acquire_terminal(){
 }
 
 void fsh_waitall(){
-    int status;
-    while (waitpid(-1, &status, WNOHANG) > 0);
+    printf("Esperando todos os processos terminarem\n");
+    pid_t pid;
+    while((pid = wait(NULL)) > 0); // Perguntar a roberta se é o suficiente
+
+    if (pid == -1 && errno != ECHILD) {
+        perror("Erro ao esperar pelo término dos processos filhos");
+    }
 }
 
 void fsh_die(FSH * fsh){
-    Node * current = fsh->session_list->head;
-    while(current != NULL){
-        Session * s = (Session*)current->value;
+    ForwardList * session_list = fsh->session_list;
+    while(session_list->size > 0){
+        Session * s = (Session*)forward_list_pop_front(session_list);
         session_notify(s, SIGKILL);
-        destroy_session(s);
-        current = current->next;
+        session_destroy(s);
     }
     fsh_destroy(fsh);
     exit(EXIT_SUCCESS);
 }
 
 int fsh_has_alive_process(FSH* fsh){
-    Node * current = fsh->process_list->head;
+    // percorre a lista de sessões e verifica se há algum processo vivo
+    Node * current = fsh->session_list->head;
     while(current != NULL){
-        Process * p = (Process*)current->value;
-        if(p->status != DONE)
-            return 1;
+        Session * s = (Session*)current->value;
+
+        // Verifica se o processo em foreground está vivo
+        if(s->foreground != NULL){
+            int status;
+            if(waitpid(s->foreground->pid, &status, WNOHANG) == 0){
+                return 1;
+            }
+        }
+
+        // Verifica se algum processo em background está vivo
+        for(int i = 0; i < s->num_background; i++){
+            int status;
+            if(waitpid(s->background[i]->pid, &status, WNOHANG) == 0){
+                return 1;
+            }
+        }
         current = current->next;
     }
     return 0;
 }
 
-Session *session_find(FSH* fsh, pid_t pid){
-    Node * current = fsh->session_list->head;
-    while(current != NULL){
-        Session * s = (Session*)current->value;
-        if(s->foreground->pid == pid)
-            return s;
-        for(int i = 0; i < s->num_background; i++){
-            if(s->background[i]->pid == pid)
-                return s;
-        }
-        current = current->next;
-    }
-    return NULL;
+Session *fsh_session_find(FSH* fsh, pid_t pid){
+    return (Session*)forward_list_find(fsh->session_list, &pid, session_pid_cmp);
 }
 
 void fsh_notify(FSH* fsh, pid_t sig){
@@ -93,3 +90,9 @@ void fsh_notify(FSH* fsh, pid_t sig){
         current = current->next;
     }
 }
+
+void fsh_destroy(FSH* fsh){
+    forward_list_destroy(fsh->session_list);
+    free(fsh);
+}
+

@@ -1,53 +1,55 @@
 #include "process.h"
+#include "utils.h"
 #include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
+#include <signal.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/wait.h>
 
-Session* create_session() {
-    Session* new_group = (Session*)malloc(sizeof(Session));
-    new_group->foreground = NULL;
-    new_group->background = NULL;
-    new_group->num_background = 0;
-    return new_group;
-}
+Process* create_process(char *args, pid_t pgid, int is_foreground) {
+    char *args_list[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
+    int n_args = 0;
+    process_input(args, args_list, &n_args, " ", MAX_ARGS);
+    args_list[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
 
+    pid_t pid = fork();
 
-Process* create_process(pid_t pid, pid_t pgid, int is_foreground) {
-    Process* new_process = (Process*)malloc(sizeof(Process));
-    new_process->pid = pid;
-    new_process->pgid = pgid;
-    new_process->status = RUNNING;
-    new_process->is_foreground = is_foreground;
-
-    printf("Processo criado com pid %d e pgid %d e foreground=%d\n", new_process->pid, new_process->pgid, new_process->is_foreground);
-
-    return new_process;
-}
-
-void insert_process_in_session(Process* p, Session* s){
-    if(p->is_foreground){
-        s->foreground = p;
-    }else{
-        s->background = (Process**)realloc(s->background, sizeof(Process*) * (s->num_background + 1));
-        s->background[s->num_background] = p;
-        s->num_background++;
-    }
-}
-
-void destroy_session(Session* s){
-    if(s->foreground != NULL){
-        destroy_process(s->foreground);
+    if (pid < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
     }
 
-    for(int i = 0; i < s->num_background; i++){
-        destroy_process(s->background[i]);
-    }
-    
-    free(s);
-}
+    // Processo pai
+    if (pid > 0) {
+        if (pgid == 0) {
+            pgid = pid;
+        }
+        setpgid(pid, pgid);
+        Process * p = (Process*)malloc(sizeof(Process));
 
-void destroy_process(Process* p){
-    free(p);
+        
+        p->pid = pid;
+        p->pgid = pgid;
+        p->is_foreground = is_foreground;
+        printf("Processo %d criado e grupo %d\n", pid, pgid);
+        return p;
+    }
+
+    // configura o tratamento de sinais
+    // signal(SIGINT, SIG_IGN); 
+    // signal(SIGTSTP, SIG_DFL);
+    // signal(SIGCHLD, SIG_DFL);
+
+    // Processo filho
+
+    // Se for um processo em background cria um filho secundário
+    if (!is_foreground) {
+        
+    }
+
+    execvp(args_list[0], args_list);
+    perror("execvp");
+    exit(EXIT_FAILURE);
 }
 
 void process_wait(Process *p) {
@@ -55,20 +57,6 @@ void process_wait(Process *p) {
     waitpid(p->pid, &status, 0);
 }
 
-void session_notify(Session * s, pid_t sig){
-    kill(s->foreground->pid, sig);
-    if (s->num_background > 0)
-        kill(s->background[0]->pgid, sig);
-}
-
-void session_mark_as_done(Session * s){
-    s->foreground->status = DONE;
-    if (s->num_background > 0)
-        s->background[0]->status = DONE;
-}
-
-void session_mark_as_stopped(Session * s){
-    s->foreground->status = STOPPED;
-    if (s->num_background > 0)
-        s->background[0]->status = STOPPED;
+void process_destroy(Process* p){
+    free(p);
 }

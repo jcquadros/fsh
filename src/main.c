@@ -3,20 +3,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
-#include <termios.h>
 #include "forward_list.h"
 #include "process.h"
 #include "fsh.h"
+#include "session.h"
+#include "utils.h"
 
-#define MAX_ARGS 2
 #define MAX_INPUT_SIZE 2000
-#define MAX_PROCESS 5
 
 FSH *fsh;
+
 /* Tratador do sinal SIGINT */
 void sigint_handler(int sig);
 
@@ -26,86 +25,57 @@ void sigtstp_handler(int sig);
 /* Configura os tratadores de sinal */
 void setup_signal_handlers();
 
-/* Separa a entrada do usuário em argumentos de acordo com o delimitador selecionado */
-void process_input(char *input, char *args[], int *n_args, char* delimiter, int max_args);
-
-/* Cria um processo */
-Process *launch_process(char *input, int is_foreground, pid_t pgid);
-
-/* Cria uma sessão */
-Session *launch_session(char *input);
+/* Executa uma linha de comando */
+void launch_session(char *input);
 
 int main(){
     char input[MAX_INPUT_SIZE]; // Buffer para a entrada do usuário
-    setup_signal_handlers();
     
     fsh = fsh_create();
+    setup_signal_handlers();
     while(1){
         fsh_acquire_terminal();
         printf("fsh> ");
-        fflush(stdout);
+        fflush(stdout); // Força a impressão do texto no terminal
 
         // Lê a entrada do usuário
-        fgets(input, MAX_INPUT_SIZE, stdin);
+        if(fgets(input, MAX_INPUT_SIZE, stdin) == NULL){
+            perror("fgets");
+            exit(EXIT_FAILURE);
+        }
+
+        // Verifica se foi escrito algo
+        if(strlen(input) == 1){
+            continue;
+        }        
+       
         input[strcspn(input, "\n")] = 0; // Remove o \n do final da string
 
-        Session *s = launch_session(input);
-        process_wait(s->foreground);
+        // Verifica se o comando é para finalizar a shell
+        if(strcmp(input, "die") == 0){
+            fsh_die(fsh);
+        }
 
+        // Verifica se o comando é para esperar todos os processos
+        if(strcmp(input, "waitall") == 0){
+            fsh_waitall();
+            continue;
+        }
+
+        launch_session(input);
     }
     return EXIT_SUCCESS;
 }
 
-Session *launch_session(char *input){
-    char *commands[MAX_PROCESS];
-    int n_commands = 0;
-    pid_t pgid = 0;
-    process_input(input, commands, &n_commands, "#", MAX_PROCESS);
+void launch_session(char *input){
+    // remove_signal_handlers(); // Remove os tratadores de sinal
+    Session *s = session_create(input); 
+    // setup_signal_handlers(); // Configura os tratadores de sinal
 
-    Session *s = create_session();
-    for(int i = 1; i < n_commands; i++){
-        Process *p = launch_process(commands[i], 0, pgid);
-        pgid = p->pgid;
-        insert_process_in_session(p, s);
-        fsh_push_process(fsh, p);
-    }
-
-    Process *p = launch_process(commands[0], 1, 0);
-    fsh_put_process_in_foreground(p);
-    insert_process_in_session(p, s);
-    fsh_push_process(fsh, p);
+    Process *fg = s->foreground;
+    fsh_put_process_in_foreground(fg);   // Coloca o processo em foreground
     fsh_push_session(fsh, s);
-    return s;
-}
-
-
-Process *launch_process(char *input, int is_foreground, pid_t pgid){
-    char *args[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
-    int n_args = 0;
-    process_input(input, args, &n_args, " ", MAX_ARGS);
-    args[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
-
-    pid_t pid = fork();
-
-    if (pid < 0) {
-        perror("fork");
-        exit(EXIT_FAILURE);
-    }
-
-    if (pid > 0) {
-        // Processo pai
-        if (pgid == 0) {
-            pgid = pid;
-        }
-        setpgid(pid, pgid);
-        Process * p = create_process(pid, pgid, is_foreground);
-        return p;
-    } 
-
-    // Processo filho
-    execvp(args[0], args);
-    perror("execvp");
-    exit(EXIT_FAILURE);
+    process_wait(fg); // Espera o processo em foreground terminar
 }
 
 
@@ -124,14 +94,11 @@ void sigint_handler(int sig) {
 
     if (fsh_has_alive_process(fsh)) { 
         printf("\nProcessos em execução. Deseja finalizar a shell? (s/n) ");
-        char response = getchar();
+        char response;
+        scanf("%c\n", &response);
         if (response == 's' || response == 'S') {
             fsh_die(fsh);
         }
-
-        // Limpa o buffer de entrada
-        while (getchar() != '\n');
-
     } else {
         fsh_die(fsh);
     }
@@ -155,24 +122,16 @@ void sigchld_handler(int sig) {
     pid_t pid;
 
     // Loop para capturar todos os processos filhos que mudaram de estado
-    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED)) > 0) {
-        if (WIFEXITED(status)) {
-            printf("Processo %d terminou normalmente com status %d.\n", pid, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
+    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
+        if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
-            Session * s = session_find(fsh, pid);
+            Session * s = fsh_session_find(fsh, pid);
             session_notify(s, WTERMSIG(status));
-            session_mark_as_done(s);
-
+    
         } else if (WIFSTOPPED(status)) {
             printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
-            Session * s = session_find(fsh, pid);
+            Session * s = fsh_session_find(fsh, pid);
             session_notify(s, WSTOPSIG(status));
-            session_mark_as_stopped(s);
-
-
-        } else if (WIFCONTINUED(status)) {
-            printf("Processo %d foi continuado.\n", pid);
         }
     }
 
@@ -183,48 +142,26 @@ void sigchld_handler(int sig) {
 }
 
 
-void signal_handler(int sig) {
-    switch (sig) {
-        case SIGINT:
-            sigint_handler(sig);
-            break;
-        case SIGTSTP:
-            sigtstp_handler(sig);
-            break;
-
-        case SIGCHLD:
-            sigchld_handler(sig);
-            break;
-        default:
-            break;
-    }
-}
-
 // Configura os tratadores de sinal
 void setup_signal_handlers() {
-    struct sigaction sa;
-
-    sa.sa_handler = signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-
-    if (sigaction(SIGINT, &sa, NULL) == -1 || sigaction(SIGTSTP, &sa, NULL) == -1 || sigaction(SIGCHLD, &sa, NULL) == -1 ) {
-        exit(EXIT_FAILURE);
-    }
-    // Investigar qual desses sinais permite que a shell nao se bloqueie
+    signal(SIGINT, sigint_handler);
+    signal(SIGTSTP, sigtstp_handler);
+    signal(SIGCHLD, sigchld_handler);
     signal(SIGQUIT, SIG_IGN);
     signal(SIGTTIN, SIG_IGN);
     signal(SIGTTOU, SIG_IGN);
 }
 
-void process_input(char *input, char *args[], int *n_args, char* delimiter, int max_args){
-    *n_args = 0;
-    char *token = strtok(input, delimiter);
-    while(token != NULL && *n_args < max_args){
-        args[*n_args] = token;
-        (*n_args)++;
-        token = strtok(NULL, delimiter);
-    }
+
+// Restaura mascaras de sinais
+void remove_signal_handlers() {
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTSTP, SIG_DFL);
+    signal(SIGCHLD, SIG_DFL);
+    signal(SIGQUIT, SIG_DFL);
+    signal(SIGTTIN, SIG_DFL);
+    signal(SIGTTOU, SIG_DFL);
 }
+
 
 
