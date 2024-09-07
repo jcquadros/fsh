@@ -62,8 +62,6 @@ void session_destroy(Session* s){
     for(int i = 0; i < s->num_background; i++){
         process_destroy(s->background[i]);
     }
+    free(s->background);
     free(s);
 }
-
-
-
