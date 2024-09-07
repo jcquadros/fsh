@@ -44,7 +44,17 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
 
     // Se for um processo em background cria um filho secundário
     if (!is_foreground) {
-        
+        pid_t pid_secondary = fork();
+
+        if (pid_secondary < 0) {
+            perror("fork");
+            exit(EXIT_FAILURE);
+        }
+
+        else if (pid_secondary > 0) {
+            setpgid(pid_secondary, getpgid(getpid()));
+            printf("Processo secundário %d criado e grupo %d\n", pid_secondary, getpgid(getpid()));
+        }
     }
 
     execvp(args_list[0], args_list);
