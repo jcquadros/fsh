@@ -35,14 +35,13 @@ int main(){
     setup_signal_handlers();
     while(1){
         fsh_acquire_terminal();
-        printf("fsh> ");
-        fflush(stdout); // Força a impressão do texto no terminal
 
-        // Lê a entrada do usuário
-        if(fgets(input, MAX_INPUT_SIZE, stdin) == NULL){
-            perror("fgets");
-            exit(EXIT_FAILURE);
-        }
+        char *retorno_fgets;
+        do {
+            printf("fsh> ");
+            fflush(stdout); // Força a impressão do texto no terminal
+            retorno_fgets = fgets(input, MAX_INPUT_SIZE, stdin);
+        } while (retorno_fgets == NULL && errno == EINTR);
 
         // Verifica se foi escrito algo
         if(strlen(input) == 1){
@@ -80,7 +79,7 @@ void launch_session(char *input){
 
 
 void sigint_handler(int sig) {
-    printf("\nRecebido SIGINT (Ctrl+C). ");
+    printf("\nRecebido SIGINT (Ctrl+C).\n");
     fflush(stdout);
     sigset_t all_signals;
     sigset_t old_mask;
@@ -95,11 +94,12 @@ void sigint_handler(int sig) {
     if (fsh_has_alive_process(fsh)) { 
         printf("\nProcessos em execução. Deseja finalizar a shell? (s/n) ");
         char response;
-        scanf("%c\n", &response);
+        scanf("%c%*c", &response);
         if (response == 's' || response == 'S') {
             fsh_die(fsh);
         }
-    } else {
+    } 
+    else {
         fsh_die(fsh);
     }
 
@@ -126,12 +126,12 @@ void sigchld_handler(int sig) {
         if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
             Session * s = fsh_session_find(fsh, pid);
-            session_notify(s, WTERMSIG(status));
+            session_notify(s, WTERMSIG(status), 1);
     
         } else if (WIFSTOPPED(status)) {
             printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
             Session * s = fsh_session_find(fsh, pid);
-            session_notify(s, WSTOPSIG(status));
+            session_notify(s, WSTOPSIG(status), 1);
         }
     }
 
