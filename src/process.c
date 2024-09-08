@@ -52,8 +52,9 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
         }
 
         else if (pid_secondary > 0) {
-            setpgid(pid_secondary, getpgid(getpid()));
-            printf("Processo secundário %d criado e grupo %d\n", pid_secondary, getpgid(getpid()));
+            pgid = getpid();
+            setpgid(pid_secondary, pgid);
+            printf("Processo secundário %d criado e grupo %d\n", pid_secondary, pgid);
         }
     }
 
