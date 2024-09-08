@@ -45,7 +45,7 @@ void fsh_die(FSH * fsh){
     ForwardList * session_list = fsh->session_list;
     while(session_list->size > 0){
         Session * s = (Session*)forward_list_pop_front(session_list);
-        session_notify(s, SIGKILL);
+        session_notify(s, SIGKILL, 1);
         session_destroy(s);
     }
     fsh_destroy(fsh);
@@ -86,7 +86,7 @@ void fsh_notify(FSH* fsh, pid_t sig){
     Node * current = fsh->session_list->head;
     while(current != NULL){
         Session * s = (Session*)current->value;
-        session_notify(s, sig);
+        session_notify(s, sig, 1);
         current = current->next;
     }
 }
