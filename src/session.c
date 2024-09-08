@@ -36,11 +36,16 @@ void session_push_process(Session* s, Process* p){
     }
 }
 
-void session_notify(Session * s, pid_t sig){
+void session_notify(Session * s, pid_t sig, int is_for_grandchildren){
     // printf("Notificando sessão com sinal %d\n", sig);
     kill(s->foreground->pid, sig);
-    if (s->num_background > 0)
+    if (s->num_background > 0) {
         kill(-s->background[0]->pgid, sig);
+        if (is_for_grandchildren) {
+            for (int i = 0; i < s->num_background; i++)
+                kill(-(s->background[i]->pid), sig);
+        }
+    }
 }
 
 int session_pid_cmp(void *data, void *key){
