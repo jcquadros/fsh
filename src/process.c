@@ -36,9 +36,9 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     }
 
     // configura o tratamento de sinais
-    // signal(SIGINT, SIG_IGN); 
-    // signal(SIGTSTP, SIG_DFL);
-    // signal(SIGCHLD, SIG_DFL);
+    signal(SIGINT, SIG_IGN); 
+    signal(SIGTSTP, SIG_DFL);
+    signal(SIGCHLD, SIG_DFL);
 
     // Processo filho
 

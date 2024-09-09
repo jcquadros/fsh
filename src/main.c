@@ -67,10 +67,7 @@ int main(){
 }
 
 void launch_session(char *input){
-    // remove_signal_handlers(); // Remove os tratadores de sinal
     Session *s = session_create(input); 
-    // setup_signal_handlers(); // Configura os tratadores de sinal
-
     Process *fg = s->foreground;
     fsh_put_process_in_foreground(fg);   // Coloca o processo em foreground
     fsh_push_session(fsh, s);
