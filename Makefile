@@ -5,6 +5,7 @@ OBJDIR = obj
 
 # Encontra todos os arquivos .c no diretório src e cria a lista correspondente de arquivos .o
 SRCS = $(wildcard $(SRCDIR)/*.c)
+HDRS = $(wildcard $(SRCDIR)/*.h)
 OBJS = $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
 
 # Compila o programa
@@ -16,7 +17,7 @@ $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 # Compila os arquivos .c para .o
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c $(HDRS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
