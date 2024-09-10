@@ -128,7 +128,7 @@ void sigchld_handler(int sig) {
     pid_t pid;
 
     // Loop para capturar todos os processos filhos que mudaram de estado
-    while ((pid = waitpid(-1, &status, WUNTRACED)) > 0) {
+    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
         if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
             Session * s = fsh_session_find(fsh, pid);
