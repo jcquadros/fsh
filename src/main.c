@@ -68,7 +68,7 @@ int main(){
 
 void launch_session(char *input){
     Session *s = session_create(input); 
-    if (s == NULL) {
+    if (s == NULL) { // Desalocando memória no erro do execvp e finalizando o filho problemático.
         fsh_deallocate(fsh);
         exit(EXIT_FAILURE);
     }

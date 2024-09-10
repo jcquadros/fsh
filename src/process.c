@@ -49,7 +49,7 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
 
         if (pid_secondary < 0) {
             perror("fork");
-            return NULL;
+            exit(EXIT_FAILURE);
         }
 
         else if (pid_secondary > 0) {
@@ -61,7 +61,7 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
 
     execvp(args_list[0], args_list);
     perror("execvp");
-    return NULL;
+    return NULL; // Rertorna NULL quando execvp falha, dessa forma é possível desalocar memória duplicada do pai.
 }
 
 void process_wait(Process *p) {
