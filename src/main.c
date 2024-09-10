@@ -68,6 +68,10 @@ int main(){
 
 void launch_session(char *input){
     Session *s = session_create(input); 
+    if (s == NULL) {
+        fsh_deallocate(fsh);
+        exit(EXIT_FAILURE);
+    }
     Process *fg = s->foreground;
     fsh_put_process_in_foreground(fg);   // Coloca o processo em foreground
     fsh_push_session(fsh, s);

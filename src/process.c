@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 Process* create_process(char *args, pid_t pgid, int is_foreground) {
     char *args_list[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
@@ -48,7 +49,7 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
 
         if (pid_secondary < 0) {
             perror("fork");
-            exit(EXIT_FAILURE);
+            return NULL;
         }
 
         else if (pid_secondary > 0) {
@@ -60,7 +61,7 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
 
     execvp(args_list[0], args_list);
     perror("execvp");
-    exit(EXIT_FAILURE);
+    return NULL;
 }
 
 void process_wait(Process *p) {

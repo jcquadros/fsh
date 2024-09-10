@@ -17,11 +17,19 @@ Session* session_create(char *input) {
 
     for(int i = 1; i < n_commands; i++){
         Process *p = create_process(commands[i], pgid, 0); // Cria um processo em background
+        if (p == NULL) { // Desaloca caso ocorra um erro na execvp
+            session_destroy(s);
+            return NULL;
+        }
         pgid = p->pgid; // Atualiza o pgid para que todos os processos sejam do mesmo grupo
         session_push_process(s,p);
     }
     pgid = 0;
     Process *p = create_process(commands[0], pgid, 1); // Cria um processo em foreground
+    if (p == NULL) { // Desaloca caso ocorra um erro na execvp
+        session_destroy(s);
+        return NULL;
+    }
     session_push_process(s, p);
     return s;
 }
