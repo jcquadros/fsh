@@ -52,6 +52,18 @@ void fsh_die(FSH * fsh){
     exit(EXIT_SUCCESS);
 }
 
+// Função usada quando ocorre um erro no execvp.
+// Ela desaloca mémoria alocada anteriormente sem enviar sinal para os processos.
+void fsh_deallocate(FSH * fsh){
+    ForwardList * session_list = fsh->session_list;
+    while(session_list->size > 0){
+        Session * s = (Session*)forward_list_pop_front(session_list);
+        session_destroy(s);
+    }
+    fsh_destroy(fsh);
+    exit(EXIT_SUCCESS);
+}
+
 int fsh_has_alive_process(FSH* fsh){
     // percorre a lista de sessões e verifica se há algum processo vivo
     Node * current = fsh->session_list->head;

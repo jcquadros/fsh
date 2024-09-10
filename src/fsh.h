@@ -16,6 +16,7 @@ void fsh_put_process_in_foreground(Process* p);
 void fsh_acquire_terminal();
 void fsh_waitall();
 void fsh_die(FSH * fsh);
+void fsh_deallocate(FSH * fsh);
 int  fsh_has_alive_process(FSH* fsh);
 void fsh_notify(FSH* fsh, pid_t sig);
 Session *fsh_session_find(FSH* fsh, pid_t pid);
