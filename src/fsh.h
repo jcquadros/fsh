@@ -13,6 +13,7 @@ typedef struct FSH {
 FSH* fsh_create();
 void fsh_push_session(FSH* fsh, Session* session);
 void fsh_put_process_in_foreground(Process* p);
+void fsh_wait_foreground(Session *session);
 void fsh_acquire_terminal();
 void fsh_waitall();
 void fsh_die(FSH * fsh);

@@ -12,7 +12,6 @@ FSH* fsh_create(){
     return new_fsh;
 }
 
-
 void fsh_push_session(FSH* fsh, Session* session){
     forward_list_push_front(fsh->session_list, session);
 }
@@ -21,6 +20,21 @@ void fsh_put_process_in_foreground(Process* p){
     if(tcsetpgrp(STDIN_FILENO, p->pid) == -1) {
         perror("tcsetpgrp");
         exit(EXIT_FAILURE);
+    }
+}
+
+void fsh_wait_foreground(Session *session) {
+    int status;
+    Process *fg = session->foreground;
+    waitpid(fg->pid, &status, 0);
+
+    if (WIFSIGNALED(status)) {
+        printf("Processo %d terminou devido ao sinal %d.\n", fg->pid, WTERMSIG(status));
+        session_notify(session, WTERMSIG(status), 1);
+
+    } else if (WIFSTOPPED(status)) {
+        printf("Processo %d foi suspenso pelo sinal %d.\n", fg->pid, WSTOPSIG(status));
+        session_notify(session, WSTOPSIG(status), 1);
     }
 }
 
