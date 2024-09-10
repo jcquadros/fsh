@@ -22,6 +22,9 @@ void sigint_handler(int sig);
 /* Tratador do sinal SIGSTP */
 void sigtstp_handler(int sig);
 
+/* Tratador do sinal SIGCHLD */
+void sigchld_handler(int sig);
+
 /* Configura os tratadores de sinal */
 void setup_signal_handlers();
 
@@ -75,7 +78,9 @@ void launch_session(char *input){
     Process *fg = s->foreground;
     fsh_put_process_in_foreground(fg);   // Coloca o processo em foreground
     fsh_push_session(fsh, s);
-    process_wait(fg); // Espera o processo em foreground terminar
+    // process_wait(fg); // Espera o processo em foreground terminar
+    fsh_wait_foreground(s);
+
 }
 
 
