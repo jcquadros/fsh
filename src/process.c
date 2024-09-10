@@ -64,10 +64,21 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     return NULL; // Rertorna NULL quando execvp falha, dessa forma é possível desalocar memória duplicada do pai.
 }
 
-void process_wait(Process *p) {
-    int status;
-    waitpid(p->pid, &status, 0);
-}
+// void process_wait(Process *p) {
+//     int status;
+//     waitpid(p->pid, &status, 0);
+
+//     if (WIFSIGNALED(status)) {
+//         printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
+//         Session * s = fsh_session_find(fsh, pid);
+//         session_notify(s, WTERMSIG(status), 1);
+    
+//         } else if (WIFSTOPPED(status)) {
+//             printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
+//             Session * s = fsh_session_find(fsh, pid);
+//             session_notify(s, WSTOPSIG(status), 1);
+//         }
+// }
 
 void process_destroy(Process* p){
     free(p);
