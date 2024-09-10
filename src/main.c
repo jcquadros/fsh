@@ -113,8 +113,7 @@ void sigint_handler(int sig) {
     if (sigprocmask(SIG_SETMASK, &old_mask, NULL) < 0) {
         perror("sigprocmask");
         exit(EXIT_FAILURE);
-    }
-
+    };
 }
 
 /* Tratador do SIGTSTP - suspende todos os filhos do shell - não conta os netos*/
@@ -123,12 +122,13 @@ void sigtstp_handler(int sig) {
     fsh_notify(fsh, SIGTSTP);
 }
 
+/* Tratador do SIGCHLD */
 void sigchld_handler(int sig) {
     int status;
     pid_t pid;
 
     // Loop para capturar todos os processos filhos que mudaram de estado
-    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
+    while ((pid = waitpid(-1, &status, WUNTRACED)) > 0) {
         if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
             Session * s = fsh_session_find(fsh, pid);
@@ -150,23 +150,104 @@ void sigchld_handler(int sig) {
 
 // Configura os tratadores de sinal
 void setup_signal_handlers() {
-    signal(SIGINT, sigint_handler);
-    signal(SIGTSTP, sigtstp_handler);
-    signal(SIGCHLD, sigchld_handler);
-    signal(SIGQUIT, SIG_IGN);
-    signal(SIGTTIN, SIG_IGN);
-    signal(SIGTTOU, SIG_IGN);
+    struct sigaction sa;
+    
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction_SIGINT");
+        exit(EXIT_FAILURE);
+    }
+    
+    sa.sa_handler = sigtstp_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGTSTP, &sa, NULL) == -1) {
+        perror("sigaction_SIGTSTP");
+        exit(EXIT_FAILURE);
+    }
+
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("sigaction_SIGCHLD");
+        exit(EXIT_FAILURE);
+    }
+
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    
+    if (sigaction(SIGQUIT, &sa, NULL) == -1) {
+        perror("sigaction_SIGQUIT");
+        exit(EXIT_FAILURE);
+    }
+    
+    if (sigaction(SIGTTIN, &sa, NULL) == -1) {
+        perror("sigaction_SIGTTIN");
+        exit(EXIT_FAILURE);
+    }
+    
+    if (sigaction(SIGTTOU, &sa, NULL) == -1) {
+        perror("sigaction_SIGTTOU");
+        exit(EXIT_FAILURE);
+    }
+    
+    // signal(SIGINT, sigint_handler);
+    // signal(SIGTSTP, sigtstp_handler);
+    // signal(SIGCHLD, sigchld_handler);
+    // signal(SIGQUIT, SIG_IGN);
+    // signal(SIGTTIN, SIG_IGN);
+    // signal(SIGTTOU, SIG_IGN);
 }
 
 
 // Restaura mascaras de sinais
 void remove_signal_handlers() {
-    signal(SIGINT, SIG_DFL);
-    signal(SIGTSTP, SIG_DFL);
-    signal(SIGCHLD, SIG_DFL);
-    signal(SIGQUIT, SIG_DFL);
-    signal(SIGTTIN, SIG_DFL);
-    signal(SIGTTOU, SIG_DFL);
+    struct sigaction sa;
+
+    sa.sa_handler = SIG_DFL; // Define o manipulador para o comportamento padrão
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("sigaction_SIGINT");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sigaction(SIGTSTP, &sa, NULL) == -1) {
+        perror("sigaction_SIGTSTP");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("sigaction_SIGCHLD");
+        exit(EXIT_FAILURE);
+    }
+
+    if (sigaction(SIGQUIT, &sa, NULL) == -1) {
+        perror("sigaction_SIGQUIT");
+        exit(EXIT_FAILURE);
+    }
+    
+    if (sigaction(SIGTTIN, &sa, NULL) == -1) {
+        perror("sigaction_SIGTTIN");
+        exit(EXIT_FAILURE);
+    }
+    
+    if (sigaction(SIGTTOU, &sa, NULL) == -1) {
+        perror("sigaction_SIGTTOU");
+        exit(EXIT_FAILURE);
+    }
+
+    // signal(SIGINT, SIG_DFL);
+    // signal(SIGTSTP, SIG_DFL);
+    // signal(SIGCHLD, SIG_DFL);
+    // signal(SIGQUIT, SIG_DFL);
+    // signal(SIGTTIN, SIG_DFL);
+    // signal(SIGTTOU, SIG_DFL);
 }
 
 

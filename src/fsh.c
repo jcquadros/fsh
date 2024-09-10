@@ -24,18 +24,7 @@ void fsh_put_process_in_foreground(Process* p){
 }
 
 void fsh_wait_foreground(Session *session) {
-    int status;
-    Process *fg = session->foreground;
-    waitpid(fg->pid, &status, 0);
-
-    if (WIFSIGNALED(status)) {
-        printf("Processo %d terminou devido ao sinal %d.\n", fg->pid, WTERMSIG(status));
-        session_notify(session, WTERMSIG(status), 1);
-
-    } else if (WIFSTOPPED(status)) {
-        printf("Processo %d foi suspenso pelo sinal %d.\n", fg->pid, WSTOPSIG(status));
-        session_notify(session, WSTOPSIG(status), 1);
-    }
+    while (kill(-(session->foreground->pid), 0) == 0) {}
 }
 
 void fsh_acquire_terminal(){
