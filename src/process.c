@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+
+// Cria o processo, aloca a memória, configura e realiza o execvp
 Process* create_process(char *args, pid_t pgid, int is_foreground) {
     char *args_list[MAX_ARGS + 1]; // +1 para receber o NULL necessario na lista de argumentos
     int n_args = 0;
@@ -28,7 +30,6 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
         setpgid(pid, pgid);
         Process * p = (Process*)malloc(sizeof(Process));
 
-        
         p->pid = pid;
         p->pgid = pgid;
         p->is_foreground = is_foreground;
@@ -36,12 +37,12 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
         return p;
     }
 
+    // Processo filho
+    
     // configura o tratamento de sinais
     signal(SIGINT, SIG_IGN); 
     signal(SIGTSTP, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
-
-    // Processo filho
 
     // Se for um processo em background cria um filho secundário
     if (!is_foreground) {
@@ -63,11 +64,7 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     return NULL; // Rertorna NULL quando execvp falha, dessa forma é possível desalocar memória duplicada do pai.
 }
 
-// void process_wait(Process *p) {
-//     int status;
-//     waitpid(p->pid, &status, 0);
-// }
-
+// Libera a memória do processo
 void process_destroy(Process* p){
     free(p);
 }

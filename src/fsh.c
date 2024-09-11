@@ -12,10 +12,12 @@ FSH* fsh_create(){
     return new_fsh;
 }
 
+// Coloca a session na head da lista de sessions da fsh
 void fsh_push_session(FSH* fsh, Session* session){
     forward_list_push_front(fsh->session_list, session);
 }
 
+// Coloca um processo em foreground
 void fsh_put_process_in_foreground(Process* p){
     if(tcsetpgrp(STDIN_FILENO, p->pid) == -1) {
         perror("tcsetpgrp");
@@ -23,10 +25,12 @@ void fsh_put_process_in_foreground(Process* p){
     }
 }
 
+// Espera que um processo em foreground parar de rodar, para assim devolver a fsh voltar a executar em foreground
 void fsh_wait_foreground(Session *session) {
     while (session->foreground_is_runnig) {}
 }
 
+// Coloca a fsh em foreground 
 void fsh_acquire_terminal(){
     if(tcsetpgrp(STDIN_FILENO, getpid()) == -1){
         perror("tcsetpgrp");
@@ -34,6 +38,7 @@ void fsh_acquire_terminal(){
     }
 }
 
+// Espera todos os processos da fsh chegarem ao fim
 void fsh_waitall(){
     pid_t pid;
     while((pid = wait(NULL)) > 0);
@@ -43,6 +48,7 @@ void fsh_waitall(){
     }
 }
 
+// Mata a fsh, mas antes mata todos os descendentes vivos
 void fsh_die(FSH * fsh){
     ForwardList * session_list = fsh->session_list;
     while(session_list->size > 0){
@@ -66,6 +72,7 @@ void fsh_deallocate(FSH * fsh){
     exit(EXIT_SUCCESS);
 }
 
+// Verifica se a fsh tem descendentes vivos se tiver retorna 0 e se tiver retorna 1
 int fsh_has_alive_process(FSH* fsh){
     // percorre a lista de sessões e verifica se há algum processo vivo
     Node * current = fsh->session_list->head;
@@ -92,10 +99,12 @@ int fsh_has_alive_process(FSH* fsh){
     return 0;
 }
 
+// Encontra de qual session é um pid
 Session *fsh_session_find(FSH* fsh, pid_t pid){
     return (Session*)forward_list_find(fsh->session_list, &pid, session_pid_cmp);
 }
 
+// Notifica todos os processos da fsh com sinal sig
 void fsh_notify(FSH* fsh, pid_t sig){
     Node * current = fsh->session_list->head;
     while(current != NULL){
@@ -105,6 +114,7 @@ void fsh_notify(FSH* fsh, pid_t sig){
     }
 }
 
+// Libera memória da fsh e das session
 void fsh_destroy(FSH* fsh){
     forward_list_destroy(fsh->session_list);
     free(fsh);

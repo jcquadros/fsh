@@ -10,6 +10,8 @@ typedef struct FSH {
     ForwardList* session_list;
 } FSH;
 
+// Comentários no .c
+
 FSH* fsh_create();
 void fsh_push_session(FSH* fsh, Session* session);
 void fsh_put_process_in_foreground(Process* p);

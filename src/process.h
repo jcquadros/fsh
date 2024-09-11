@@ -13,8 +13,6 @@ typedef struct Process {
 
 /* Cria um novo processo */
 Process* create_process(char *args, pid_t pgid, int is_foreground);
-/* Espera um processo terminar */
-// void process_wait(Process* p);
 /* Destroi um processo */
 void process_destroy(Process* p);
 

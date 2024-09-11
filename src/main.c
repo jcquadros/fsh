@@ -28,6 +28,9 @@ void sigchld_handler(int sig);
 /* Configura os tratadores de sinal */
 void setup_signal_handlers();
 
+/* Volta os tratadores para default */
+void remove_signal_handlers();
+
 /* Executa uma linha de comando */
 void launch_session(char *input);
 
@@ -77,10 +80,8 @@ void launch_session(char *input){
     }
     Process *fg = s->foreground;
     fsh_put_process_in_foreground(fg);   // Coloca o processo em foreground
-    fsh_push_session(fsh, s);
-    // process_wait(fg); // Espera o processo em foreground terminar
-    fsh_wait_foreground(s);
-
+    fsh_push_session(fsh, s); 
+    fsh_wait_foreground(s);     // Espera o processo em foreground terminar
 }
 
 
@@ -204,7 +205,7 @@ void setup_signal_handlers() {
     }
 }
 
-// Restaura mascaras de sinais
+// Restaura mascaras de sinais para o comportamento padrão
 void remove_signal_handlers() {
     struct sigaction sa;
 
