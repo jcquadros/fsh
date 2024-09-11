@@ -7,9 +7,10 @@
 #define MAX_COMMANDS 5
 
 typedef struct Session {
-    Process* foreground;   // Processo em foreground
-    Process** background;  // Array de processos em background
-    int num_background;    // Número de processos em background
+    Process* foreground;        // Processo em foreground
+    Process** background;       // Array de processos em background
+    int num_background;         // Número de processos em background
+    int foreground_is_runnig;   // Status do processo em foreground
 } Session;
 
 /* Cria uma nova sessao */

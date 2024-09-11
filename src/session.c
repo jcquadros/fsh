@@ -14,6 +14,7 @@ Session* session_create(char *input) {
     s->foreground = NULL;
     s->background = NULL;
     s->num_background = 0;
+    s->foreground_is_runnig = 0;
 
     for(int i = 1; i < n_commands; i++){
         Process *p = create_process(commands[i], pgid, 0); // Cria um processo em background
@@ -31,6 +32,7 @@ Session* session_create(char *input) {
         return NULL;
     }
     session_push_process(s, p);
+    s->foreground_is_runnig = 1;
     return s;
 }
 
@@ -45,7 +47,6 @@ void session_push_process(Session* s, Process* p){
 }
 
 void session_notify(Session * s, pid_t sig, int is_for_grandchildren){
-    // printf("Notificando sessão com sinal %d\n", sig);
     kill(s->foreground->pid, sig);
     if (s->num_background > 0) {
         kill(-s->background[0]->pgid, sig);
