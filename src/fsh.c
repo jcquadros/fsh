@@ -24,7 +24,7 @@ void fsh_put_process_in_foreground(Process* p){
 }
 
 void fsh_wait_foreground(Session *session) {
-    while (kill(-(session->foreground->pid), 0) == 0) {}
+    while (session->foreground_is_runnig) {}
 }
 
 void fsh_acquire_terminal(){
@@ -35,9 +35,8 @@ void fsh_acquire_terminal(){
 }
 
 void fsh_waitall(){
-    printf("Esperando todos os processos terminarem\n");
     pid_t pid;
-    while((pid = wait(NULL)) > 0); // Perguntar a roberta se é o suficiente
+    while((pid = wait(NULL)) > 0);
 
     if (pid == -1 && errno != ECHILD) {
         perror("Erro ao esperar pelo término dos processos filhos");
