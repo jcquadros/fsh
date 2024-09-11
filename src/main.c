@@ -128,16 +128,20 @@ void sigchld_handler(int sig) {
     pid_t pid;
 
     // Loop para capturar todos os processos filhos que mudaram de estado
-    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG)) > 0) {
+    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED)) > 0) {
         if (WIFSIGNALED(status)) {
             printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
             Session * s = fsh_session_find(fsh, pid);
             session_notify(s, WTERMSIG(status), 1);
-    
-        } else if (WIFSTOPPED(status)) {
+        }
+        else if (WIFSTOPPED(status)) {
             printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
             Session * s = fsh_session_find(fsh, pid);
             session_notify(s, WSTOPSIG(status), 1);
+        } 
+        else if (WIFCONTINUED(status)) {
+            printf("Processo %d recebeu sina para continuar.\n", pid);
+            fsh_notify(fsh, SIGCONT);
         }
     }
 
@@ -154,7 +158,7 @@ void setup_signal_handlers() {
     
     sa.sa_handler = sigint_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
+    sa.sa_flags = 0;
     if (sigaction(SIGINT, &sa, NULL) == -1) {
         perror("sigaction_SIGINT");
         exit(EXIT_FAILURE);
@@ -162,7 +166,7 @@ void setup_signal_handlers() {
     
     sa.sa_handler = sigtstp_handler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
+    sa.sa_flags = 0;
     if (sigaction(SIGTSTP, &sa, NULL) == -1) {
         perror("sigaction_SIGTSTP");
         exit(EXIT_FAILURE);
