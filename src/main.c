@@ -85,7 +85,6 @@ void launch_session(char *input){
 
 
 void sigint_handler(int sig) {
-    printf("\nRecebido SIGINT (Ctrl+C).\n");
     fflush(stdout);
     sigset_t all_signals;
     sigset_t old_mask;
@@ -118,7 +117,6 @@ void sigint_handler(int sig) {
 
 /* Tratador do SIGTSTP - suspende todos os filhos do shell - não conta os netos*/
 void sigtstp_handler(int sig) {
-    printf("\nRecebido SIGTSTP (Ctrl+Z). O programa não será suspenso. Mas os filhos de shell sim!\n");
     fsh_notify(fsh, SIGTSTP);
 }
 
@@ -130,18 +128,24 @@ void sigchld_handler(int sig) {
     // Loop para capturar todos os processos filhos que mudaram de estado
     while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED)) > 0) {
         if (WIFSIGNALED(status)) {
-            printf("Processo %d terminou devido ao sinal %d.\n", pid, WTERMSIG(status));
             Session * s = fsh_session_find(fsh, pid);
+            if (pid == s->foreground->pid)
+                s->foreground_is_runnig = 0;
             session_notify(s, WTERMSIG(status), 1);
         }
         else if (WIFSTOPPED(status)) {
-            printf("Processo %d foi suspenso pelo sinal %d.\n", pid, WSTOPSIG(status));
             Session * s = fsh_session_find(fsh, pid);
+            if (pid == s->foreground->pid)
+                s->foreground_is_runnig = 0;
             session_notify(s, WSTOPSIG(status), 1);
         } 
         else if (WIFCONTINUED(status)) {
-            printf("Processo %d recebeu sina para continuar.\n", pid);
             fsh_notify(fsh, SIGCONT);
+        }
+        else if (WIFEXITED(status)) {
+            Session *s = fsh_session_find(fsh, pid);
+            if (pid == s->foreground->pid)
+                s->foreground_is_runnig = 0;
         }
     }
 
@@ -198,15 +202,7 @@ void setup_signal_handlers() {
         perror("sigaction_SIGTTOU");
         exit(EXIT_FAILURE);
     }
-    
-    // signal(SIGINT, sigint_handler);
-    // signal(SIGTSTP, sigtstp_handler);
-    // signal(SIGCHLD, sigchld_handler);
-    // signal(SIGQUIT, SIG_IGN);
-    // signal(SIGTTIN, SIG_IGN);
-    // signal(SIGTTOU, SIG_IGN);
 }
-
 
 // Restaura mascaras de sinais
 void remove_signal_handlers() {
@@ -245,14 +241,4 @@ void remove_signal_handlers() {
         perror("sigaction_SIGTTOU");
         exit(EXIT_FAILURE);
     }
-
-    // signal(SIGINT, SIG_DFL);
-    // signal(SIGTSTP, SIG_DFL);
-    // signal(SIGCHLD, SIG_DFL);
-    // signal(SIGQUIT, SIG_DFL);
-    // signal(SIGTTIN, SIG_DFL);
-    // signal(SIGTTOU, SIG_DFL);
 }
-
-
-
