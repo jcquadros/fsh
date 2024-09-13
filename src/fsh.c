@@ -38,14 +38,16 @@ void fsh_acquire_terminal(){
     }
 }
 
-// Espera todos os processos da fsh chegarem ao fim
+// Faz com que a shell libere todos os seus descendentes filhos que estejam no estado “Zombie” antes de exibir um novo prompt.
+// O TRATADOR DO SIGCHLD JÁ FAZ ISSO...
 void fsh_waitall(){
     pid_t pid;
-    while((pid = wait(NULL)) > 0);
-
-    if (pid == -1 && errno != ECHILD) {
-        perror("Erro ao esperar pelo término dos processos filhos");
-    }
+    int status;
+    do {
+        do {
+            pid = waitpid(-1, &status, WNOHANG);
+        } while (pid == -1 && errno == EINTR); // A chamada de sistema foi interrompida e deve ser repetida.
+    } while (pid > 0); // Tratar os multiplos filhos "zombies".
 }
 
 // Mata a fsh, mas antes mata todos os descendentes vivos
@@ -72,27 +74,33 @@ void fsh_deallocate(FSH * fsh){
     exit(EXIT_SUCCESS);
 }
 
-// Verifica se a fsh tem descendentes vivos se tiver retorna 0 e se tiver retorna 1
+// Verifica se a fsh tem descendentes vivos se não tiver retorna 0 e se tiver retorna 1
 int fsh_has_alive_process(FSH* fsh){
     // percorre a lista de sessões e verifica se há algum processo vivo
     Node * current = fsh->session_list->head;
+    int status;
+    pid_t pid;
     while(current != NULL){
         Session * s = (Session*)current->value;
 
         // Verifica se o processo em foreground está vivo
         if(s->foreground != NULL){
-            int status;
-            if(waitpid(s->foreground->pid_principal, &status, WNOHANG) == 0){
-                return 1;
-            }
+            do {
+                pid = waitpid(s->foreground->pid_principal, &status, WNOHANG); 
+                if(pid == 0){
+                    return 1; // Retorna 1 se o processo foreground ainda estiver vivo.
+                }
+            } while (pid == -1 && errno == EINTR); // Se a chamada de sistema for interrompida ela deve ser repetida.  
         }
 
         // Verifica se algum processo principal em background está vivo
         for(int i = 0; i < s->num_background; i++){
-            int status;
-            if(waitpid(s->background[i]->pid_principal, &status, WNOHANG) == 0){
-                return 1;
-            }
+            do {
+                pid = waitpid(s->background[i]->pid_principal, &status, WNOHANG);
+                if(pid == 0){
+                    return 1; // Retorna 1 se um dos processos em background ainda estiver vivo.
+                }
+            } while (pid == -1 && errno == EINTR); // Se a chamada de sistema for interrompida ela deve ser repetida.
         }
         current = current->next;
     }
