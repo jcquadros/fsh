@@ -16,7 +16,8 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     args_list[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
 
     // Uso do pipe, não sei se o uso era permitido ;-;
-    // O pipe foi utilizado para obter o pid do processo secundário(Px'), assim é possivel realizar o controle dele depois do processo principal(Px) ser finalizado.
+    // O pipe foi utilizado para obter o pid do processo secundário Px'
+    // Dessa forma é possivel realizar o controle dele memo depois da morte de Px ser finalizado.
     int fd_pipe[2];
     if (pipe(fd_pipe) == -1) {exit(printf("Erro: Criação do Pipe"));}
 
@@ -32,8 +33,9 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     else if (pid_principal > 0) {
         if (pgid == 0) {
             pgid = pid_principal;
-        }
+        } // Para o processo foreground e para o primeiro processo em background da sessão.
 
+        // Fecha a escrita no pipe.
         close(fd_pipe[1]); 
 
         setpgid(pid_principal, pgid);
@@ -44,6 +46,8 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
         p->pgid = pgid;
         if(!is_foreground) {
             if (read(fd_pipe[0], &pid_secundario, sizeof(pid_secundario)) == -1) {exit(printf("Erro: Falha na leitura do pipe.\n"));}
+            // Fecha a leitura no pipe.
+            close(fd_pipe[0]);
         }
         p->is_foreground = is_foreground;
         return p;
@@ -60,10 +64,18 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
                 exit(EXIT_FAILURE);
             }
 
+            // Processo Px' - Neto
+            else if (pid_secundario == 0) {
+                close(fd_pipe[0]);
+                close(fd_pipe[1]);
+            }
+
+            // Processo Px - Filho
             else if (pid_secundario > 0) {
                 pgid = getpgid(getpid());
                 setpgid(pid_secundario, pgid);
                 if (write(fd_pipe[1], &pid_secundario, sizeof(pid_secundario)) == -1) {exit(printf("Erro: Falha na escrita do pipe.\n"));}
+                close(fd_pipe[1]);
             }
         }
     }
