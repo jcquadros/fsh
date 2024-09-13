@@ -144,9 +144,11 @@ void sigchld_handler(int sig) {
                     s->foreground_is_runnig = 0;
                 session_notify(s, WSTOPSIG(status));
             } 
-            else if (WIFCONTINUED(status)) {
-                fsh_notify(fsh, SIGCONT);
-            }
+            //Caso queira mandar o sinal de continuar para todos os filhos, o pdf so fala quando morre ou é suspenso... 
+            // PDF: "Outra particularidade da fsh é que quando um processo morre ou é suspenso devido a um sinal, ..."
+            // else if (WIFCONTINUED(status)) { 
+            //     fsh_notify(fsh, SIGCONT);
+            // }
             else if (WIFEXITED(status)) {
                 Session *s = fsh_session_find(fsh, pid);
                 if (pid == s->foreground->pid_principal)
