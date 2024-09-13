@@ -19,7 +19,7 @@ void fsh_push_session(FSH* fsh, Session* session){
 
 // Coloca um processo em foreground
 void fsh_put_process_in_foreground(Process* p){
-    if(tcsetpgrp(STDIN_FILENO, p->pid) == -1) {
+    if(tcsetpgrp(STDIN_FILENO, p->pid_principal) == -1) {
         perror("tcsetpgrp");
         exit(EXIT_FAILURE);
     }
@@ -53,7 +53,7 @@ void fsh_die(FSH * fsh){
     ForwardList * session_list = fsh->session_list;
     while(session_list->size > 0){
         Session * s = (Session*)forward_list_pop_front(session_list);
-        session_notify(s, SIGKILL, 1);
+        session_notify(s, SIGKILL);
         session_destroy(s);
     }
     fsh_destroy(fsh);
@@ -82,15 +82,15 @@ int fsh_has_alive_process(FSH* fsh){
         // Verifica se o processo em foreground está vivo
         if(s->foreground != NULL){
             int status;
-            if(waitpid(s->foreground->pid, &status, WNOHANG) == 0){
+            if(waitpid(s->foreground->pid_principal, &status, WNOHANG) == 0){
                 return 1;
             }
         }
 
-        // Verifica se algum processo em background está vivo
+        // Verifica se algum processo principal em background está vivo
         for(int i = 0; i < s->num_background; i++){
             int status;
-            if(waitpid(s->background[i]->pid, &status, WNOHANG) == 0){
+            if(waitpid(s->background[i]->pid_principal, &status, WNOHANG) == 0){
                 return 1;
             }
         }
@@ -101,7 +101,7 @@ int fsh_has_alive_process(FSH* fsh){
 
 // Encontra de qual session é um pid
 Session *fsh_session_find(FSH* fsh, pid_t pid){
-    return (Session*)forward_list_find(fsh->session_list, &pid, session_pid_cmp);
+    return (Session*)forward_list_find(fsh->session_list, &pid, session_pid_principal_cmp);
 }
 
 // Notifica todos os processos da fsh com sinal sig
@@ -109,7 +109,7 @@ void fsh_notify(FSH* fsh, pid_t sig){
     Node * current = fsh->session_list->head;
     while(current != NULL){
         Session * s = (Session*)current->value;
-        session_notify(s, sig, 1);
+        session_notify(s, sig);
         current = current->next;
     }
 }
