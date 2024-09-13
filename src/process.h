@@ -6,8 +6,9 @@
 #define MAX_ARGS 3 // Um comando pode ter 2 argumentos + 1 para o comando em si
 
 typedef struct Process {
-    pid_t pid;              // ID do processo
-    pid_t pgid;             // ID do grupo de processos
+    pid_t pid_principal;   // ID do processo principal
+    pid_t pid_secundario;  // ID do processo secundario
+    pid_t pgid;            // ID do grupo de processos
     int is_foreground;     // Flag para indicar se é um processo em foreground
 } Process;
 
