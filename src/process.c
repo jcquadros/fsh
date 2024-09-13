@@ -15,49 +15,64 @@ Process* create_process(char *args, pid_t pgid, int is_foreground) {
     process_input(args, args_list, &n_args, " ", MAX_ARGS);
     args_list[n_args] = NULL; // Adicionando NULL no final da lista de argumentos
 
-    pid_t pid = fork();
+    // Uso do pipe, não sei se o uso era permitido ;-;
+    // O pipe foi utilizado para obter o pid do processo secundário(Px'), assim é possivel realizar o controle dele depois do processo principal(Px) ser finalizado.
+    int fd_pipe[2];
+    if (pipe(fd_pipe) == -1) {exit(printf("Erro: Criação do Pipe"));}
 
-    if (pid < 0) {
+    pid_t pid_principal = fork();
+    pid_t pid_secundario = - 888;
+
+    if (pid_principal < 0) {
         perror("fork");
         exit(EXIT_FAILURE);
     }
 
-    // Processo pai
-    if (pid > 0) {
+    // Processo pai define o pgid
+    else if (pid_principal > 0) {
         if (pgid == 0) {
-            pgid = pid;
+            pgid = pid_principal;
         }
-        setpgid(pid, pgid);
+
+        close(fd_pipe[1]); 
+
+        setpgid(pid_principal, pgid);
         Process * p = (Process*)malloc(sizeof(Process));
 
-        p->pid = pid;
+        p->pid_principal = pid_principal;
+        p->pid_secundario = pid_secundario;
         p->pgid = pgid;
+        if(!is_foreground) {
+            if (read(fd_pipe[0], &pid_secundario, sizeof(pid_secundario)) == -1) {exit(printf("Erro: Falha na leitura do pipe.\n"));}
+        }
         p->is_foreground = is_foreground;
-
         return p;
     }
 
-    // Processo filho
-    
+    // Processo filho cria processo secundário se for um processo em background
+    else {
+        close(fd_pipe[0]);
+        if (!is_foreground) {
+            pid_secundario= fork();
+
+            if (pid_secundario < 0) {
+                perror("fork");
+                exit(EXIT_FAILURE);
+            }
+
+            else if (pid_secundario > 0) {
+                pgid = getpgid(getpid());
+                setpgid(pid_secundario, pgid);
+                if (write(fd_pipe[1], &pid_secundario, sizeof(pid_secundario)) == -1) {exit(printf("Erro: Falha na escrita do pipe.\n"));}
+            }
+        }
+    }
+
+    // Processo filho e secundário(se for background)
     // configura o tratamento de sinais
     signal(SIGINT, SIG_IGN); 
     signal(SIGTSTP, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
-
-    // Se for um processo em background cria um filho secundário
-    if (!is_foreground) {
-        pid_t pid_secondary = fork();
-
-        if (pid_secondary < 0) {
-            perror("fork");
-            exit(EXIT_FAILURE);
-        }
-
-        else if (pid_secondary > 0) {
-            pgid = getpid();
-            setpgid(pid_secondary, pgid);            
-        }
-    }
 
     execvp(args_list[0], args_list);
     perror("execvp");
