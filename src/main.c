@@ -126,34 +126,34 @@ void sigchld_handler(int sig) {
     int status;
     pid_t pid;
 
-    // Loop para capturar todos os processos filhos que mudaram de estado
-    while ((pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED)) > 0) {
-        if (WIFSIGNALED(status)) {
-            Session * s = fsh_session_find(fsh, pid);
-            if (pid == s->foreground->pid_principal)
-                s->foreground_is_runnig = 0;
-            session_notify(s, WTERMSIG(status));
+    do {
+        do {
+            pid = waitpid(-1, &status, WUNTRACED | WNOHANG | WCONTINUED);
+        } while (pid == -1 && errno == EINTR); // Se a chamada de sistema for interrompida ela deve ser repetida.  
+    
+        if (pid > 0) {
+            if (WIFSIGNALED(status)) {
+                Session * s = fsh_session_find(fsh, pid);
+                if (pid == s->foreground->pid_principal)
+                    s->foreground_is_runnig = 0;
+                session_notify(s, WTERMSIG(status));
+            }
+            else if (WIFSTOPPED(status)) {
+                Session * s = fsh_session_find(fsh, pid);
+                if (pid == s->foreground->pid_principal)
+                    s->foreground_is_runnig = 0;
+                session_notify(s, WSTOPSIG(status));
+            } 
+            else if (WIFCONTINUED(status)) {
+                fsh_notify(fsh, SIGCONT);
+            }
+            else if (WIFEXITED(status)) {
+                Session *s = fsh_session_find(fsh, pid);
+                if (pid == s->foreground->pid_principal)
+                    s->foreground_is_runnig = 0;
+            }
         }
-        else if (WIFSTOPPED(status)) {
-            Session * s = fsh_session_find(fsh, pid);
-            if (pid == s->foreground->pid_principal)
-                s->foreground_is_runnig = 0;
-            session_notify(s, WSTOPSIG(status));
-        } 
-        else if (WIFCONTINUED(status)) {
-            fsh_notify(fsh, SIGCONT);
-        }
-        else if (WIFEXITED(status)) {
-            Session *s = fsh_session_find(fsh, pid);
-            if (pid == s->foreground->pid_principal)
-                s->foreground_is_runnig = 0;
-        }
-    }
-
-    // Verifica se houve um erro no waitpid
-    if (pid == -1 && errno != ECHILD) {
-        perror("waitpid");
-    }
+    } while (pid > 0);
 }
 
 
