@@ -18,9 +18,9 @@ Session* session_create(char *input);
 /* Adiciona um processo a uma sessao */
 void session_push_process(Session* s, Process* p);
 /* Notifica todos os processos de uma sessao */
-void session_notify(Session * s, pid_t sig, int is_for_grandchildren);
+void session_notify(Session * s, pid_t sig);
 /* Compara o pid de um processo com o pid dos processos de uma sessao */
-int session_pid_cmp(void *data, void *key);
+int session_pid_principal_cmp(void *data, void *key);
 /* Destroi uma sessao */
 void session_destroy(Session* s);
 

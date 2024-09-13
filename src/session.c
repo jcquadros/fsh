@@ -46,24 +46,22 @@ void session_push_process(Session* s, Process* p){
     }
 }
 
-void session_notify(Session * s, pid_t sig, int is_for_grandchildren){
-    kill(s->foreground->pid, sig);
+void session_notify(Session * s, pid_t sig){
+    kill(s->foreground->pid_principal, sig);
     if (s->num_background > 0) {
-        kill(-s->background[0]->pgid, sig);
-        if (is_for_grandchildren) {
-            for (int i = 0; i < s->num_background; i++)
-                kill(-(s->background[i]->pid), sig);
-        }
+        kill(-(s->background[0]->pgid), sig);
+        for (int i = 0; i < s->num_background; i++)
+            kill(-(s->background[i]->pid_secundario), sig);
     }
 }
 
-int session_pid_cmp(void *data, void *key){
+int session_pid_principal_cmp(void *data, void *key){
     Session *s = (Session*)data;
     pid_t pid = *((pid_t*)key);
-    if(s->foreground->pid == pid)
+    if(s->foreground->pid_principal == pid)
         return 0;
     for(int i = 0; i < s->num_background; i++){
-        if(s->background[i]->pid == pid)
+        if(s->background[i]->pid_principal == pid)
             return 0;
     }
     return 1;
